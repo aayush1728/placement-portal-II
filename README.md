@@ -1,170 +1,143 @@
-# 🎓 Placement Portal Application (PPA)
+# Placement Portal V2 — App Dev II
 
-A full-featured campus recruitment management system built with **Flask**, **Vue.js 3**, **SQLite**, **Redis**, and **Celery**.
-
----
-
-## 📁 Project Structure
-
-```
-placement_portal/
-├── backend/
-│   ├── app.py               ← Flask application factory + entry point
-│   ├── config.py            ← Environment-based configuration
-│   ├── extensions.py        ← Flask extension instances
-│   ├── models.py            ← SQLAlchemy models (User, Student, Company, Drive, Application)
-│   ├── celery_worker.py     ← Celery worker entry point
-│   ├── requirements.txt
-│   ├── routes/
-│   │   ├── auth.py          ← Login, register (student/company)
-│   │   ├── admin.py         ← Admin management endpoints
-│   │   ├── company.py       ← Company dashboard, drives, applications
-│   │   └── student.py       ← Student dashboard, drives, profile, CSV export
-│   ├── tasks/
-│   │   └── jobs.py          ← Celery tasks (CSV export, daily reminders, monthly report)
-│   └── uploads/             ← Resume storage (auto-created)
-├── frontend/
-│   ├── index.html           ← Jinja2 entry point (loads Vue 3 via CDN)
-│   └── src/
-│       ├── store.js         ← Reactive auth store
-│       ├── api.js           ← Axios API wrapper
-│       ├── router.js        ← Vue Router 4
-│       ├── main.js          ← App bootstrap
-│       └── components/
-│           ├── common/      ← Navbar, Toast
-│           ├── auth/        ← Login, Student Register, Company Register
-│           ├── admin/       ← Dashboard, Companies, Students, Drives, Applications
-│           ├── company/     ← Dashboard, Drives, Drive Form, Applications
-│           └── student/     ← Dashboard, Browse Drives, My Applications, Profile
-├── run.py                   ← Quick-start server
-└── .env.example             ← Environment variable template
-```
+## Tech Stack
+- **Backend**: Flask + Flask-JWT-Extended + Flask-SQLAlchemy + Flask-Mail
+- **Frontend**: Vue 3 (CDN) + Bootstrap 5
+- **Database**: SQLite
+- **Cache**: Redis
+- **Background Jobs**: Celery + Redis
 
 ---
 
-## ⚡ Quick Start
+## Setup Instructions
 
-### 1. Prerequisites
-- Python 3.10+
-- Redis (running on `localhost:6379`)
-- Node.js (not required — Vue uses CDN)
+### 1. Install Redis (required for Celery)
+**Ubuntu/WSL:**
+```bash
+sudo apt install redis-server
+sudo service redis-server start
+```
+**Mac:**
+```bash
+brew install redis && brew services start redis
+```
+**Verify:** `redis-cli ping` → should return `PONG`
 
-### 2. Install Python dependencies
+### 2. Backend Setup
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment
+**Optional: Set mail credentials (for email features)**
 ```bash
-cp .env.example .env
-# Edit .env with your mail credentials
+export MAIL_USERNAME=your_gmail@gmail.com
+export MAIL_PASSWORD=your_app_password
 ```
+(Gmail → Security → App Passwords to generate one)
 
-### 4. Start Redis
-```bash
-redis-server
-```
-
-### 5. Run the Flask server
-```bash
-cd ..          # back to placement_portal/
-python run.py
-```
-Visit: **http://localhost:5000**
-
-### 6. Start Celery worker (background jobs)
+### 3. Run the Flask API
 ```bash
 cd backend
-celery -A celery_worker.celery worker --loglevel=info
+python app.py
 ```
+API runs at: http://localhost:5000
+Admin auto-created: **admin@placement.com / admin123**
 
-### 7. Start Celery Beat scheduler (scheduled jobs)
+### 4. Run Celery Worker (background jobs)
+Open a new terminal:
 ```bash
 cd backend
-celery -A celery_worker.celery beat --loglevel=info
+celery -A tasks.celery_app.celery worker --loglevel=info
 ```
 
----
+### 5. Run Celery Beat (scheduled jobs)
+Open another terminal:
+```bash
+cd backend
+celery -A tasks.celery_app.celery beat --loglevel=info
+```
 
-## 🔐 Default Admin Credentials
-| Field    | Value                    |
-|----------|--------------------------|
-| Email    | admin@placement.edu      |
-| Password | Admin@2026               |
-
-The admin account is automatically seeded on the first run.
-
----
-
-## 🔗 API Endpoints
-
-### Auth
-| Method | Endpoint                     | Description            |
-|--------|------------------------------|------------------------|
-| POST   | `/api/auth/login`            | Login (all roles)      |
-| POST   | `/api/auth/register/student` | Student registration   |
-| POST   | `/api/auth/register/company` | Company registration   |
-| GET    | `/api/auth/me`               | Get current user       |
-
-### Admin (`/api/admin/`)
-| Method | Endpoint                             | Description               |
-|--------|--------------------------------------|---------------------------|
-| GET    | `/dashboard`                         | Stats + monthly chart      |
-| GET    | `/companies`                         | List/search companies      |
-| PUT    | `/companies/<id>/approve`            | Approve company            |
-| PUT    | `/companies/<id>/reject`             | Reject company             |
-| PUT    | `/companies/<id>/blacklist`          | Toggle blacklist           |
-| GET    | `/students`                          | List/search students       |
-| PUT    | `/students/<id>/blacklist`           | Toggle blacklist           |
-| PUT    | `/students/<id>/deactivate`          | Toggle activation          |
-| GET    | `/drives`                            | List/filter drives         |
-| PUT    | `/drives/<id>/approve`               | Approve drive              |
-| PUT    | `/drives/<id>/reject`                | Reject drive               |
-| GET    | `/applications`                      | All applications           |
-| GET    | `/reports/monthly`                   | Monthly stats              |
-
-### Company (`/api/company/`)
-| Method | Endpoint                             | Description               |
-|--------|--------------------------------------|---------------------------|
-| GET    | `/dashboard`                         | Company dashboard stats   |
-| GET    | `/drives`                            | List own drives            |
-| POST   | `/drives`                            | Create drive              |
-| PUT    | `/drives/<id>`                       | Update drive              |
-| PUT    | `/drives/<id>/close`                 | Close drive               |
-| GET    | `/drives/<id>/applications`          | Drive applicants           |
-| PUT    | `/applications/<id>/status`          | Update applicant status    |
-| PUT    | `/profile`                           | Update company profile     |
-
-### Student (`/api/student/`)
-| Method | Endpoint                             | Description               |
-|--------|--------------------------------------|---------------------------|
-| GET    | `/dashboard`                         | Student dashboard         |
-| GET    | `/drives`                            | Browse eligible drives     |
-| GET    | `/drives/<id>`                       | Drive detail              |
-| POST   | `/drives/<id>/apply`                 | Apply to drive            |
-| GET    | `/applications`                      | My applications            |
-| PUT    | `/profile`                           | Update profile            |
-| POST   | `/profile/resume`                    | Upload resume             |
-| POST   | `/export-csv`                        | Trigger CSV export (async) |
-| GET    | `/export-csv/status/<task_id>`       | Check export status        |
+### 6. Open the Frontend
+Just open `frontend/index.html` directly in your browser.
+No build step needed — uses Vue 3 via CDN.
 
 ---
 
-## ⚙️ Background Jobs (Celery)
+## API Endpoints
 
-| Job | Trigger | Description |
-|-----|---------|-------------|
-| `export_applications_csv` | User-triggered | Generates and emails application history CSV |
-| `send_deadline_reminders` | Daily @ 8 AM | Emails students about drives closing in 3 days |
-| `send_monthly_report` | 1st of month @ 7 AM | Emails admin an HTML activity report |
+### Auth (`/api/auth`)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/login` | Login (returns JWT token) |
+| POST | `/register/student` | Student registration |
+| POST | `/register/company` | Company registration |
+| GET | `/me` | Get current user profile |
+
+### Admin (`/api/admin`) — JWT required
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/dashboard` | Stats (cached 60s) |
+| GET | `/companies?q=` | List/search companies |
+| POST | `/companies/:id/action` | approve/reject/blacklist/delete |
+| GET | `/students?q=` | List/search students |
+| POST | `/students/:id/action` | blacklist/deactivate/delete |
+| GET | `/drives` | All drives |
+| POST | `/drives/:id/action` | approve/reject |
+| GET | `/applications` | All applications |
+
+### Company (`/api/company`) — JWT required
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/dashboard` | Company + drives |
+| POST | `/drives` | Create drive |
+| PUT | `/drives/:id` | Edit drive |
+| DELETE | `/drives/:id` | Delete drive |
+| POST | `/drives/:id/close` | Close drive |
+| GET | `/drives/:id/applications` | View applicants |
+| PUT | `/applications/:id/status` | Update status |
+
+### Student (`/api/student`) — JWT required
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/drives?q=` | List approved drives (cached) |
+| POST | `/apply/:id` | Apply to drive |
+| GET | `/applications` | My applications |
+| GET | `/history` | Placement history |
+| GET | `/profile` | Get profile |
+| PUT | `/profile` | Update profile |
+| POST | `/profile/resume` | Upload resume |
+| POST | `/export-csv` | Trigger CSV export (async) |
+| GET | `/export-status/:task_id` | Check export status |
 
 ---
 
-## 🛠️ Tech Stack
-- **Backend:** Flask 3, Flask-SQLAlchemy, Flask-JWT-Extended, Flask-Caching, Flask-Mail
-- **Database:** SQLite (via SQLAlchemy ORM — programmatically created)
-- **Cache:** Redis via Flask-Caching
-- **Queue:** Celery + Redis
-- **Frontend:** Vue.js 3 (CDN), Vue Router 4, Axios, Bootstrap 5, Chart.js
-- **Styling:** Bootstrap 5 only (no other CSS framework)
+## Background Jobs
+
+| Job | Type | Trigger | Description |
+|-----|------|---------|-------------|
+| Daily Reminders | Scheduled | Every 24h | Emails students about drives closing in 3 days |
+| Monthly Report | Scheduled | Every 30 days | Emails admin an HTML activity report |
+| CSV Export | User-triggered | Student clicks Export | Generates CSV of application history, emails it |
+
+---
+
+## Project Structure
+```
+ppa_v2/
+├── backend/
+│   ├── app.py              # Flask factory, Redis setup
+│   ├── models.py           # SQLAlchemy models
+│   ├── requirements.txt
+│   ├── uploads/            # Resume files
+│   ├── routes/
+│   │   ├── auth.py
+│   │   ├── admin.py
+│   │   ├── company.py
+│   │   └── student.py
+│   └── tasks/
+│       ├── celery_app.py   # Celery config + beat schedule
+│       └── jobs.py         # 3 background tasks
+└── frontend/
+    └── index.html          # Single-page Vue 3 app (no build needed)
+```

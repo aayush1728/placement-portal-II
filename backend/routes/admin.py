@@ -1,250 +1,136 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt
-from extensions import db, cache
-from models import User, StudentProfile, CompanyProfile, PlacementDrive, Application
-from datetime import datetime
+from flask import Blueprint, request, jsonify, current_app
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from models import db, User, Student, Company, PlacementDrive, Application
+from extensions import cache
+import json
 
-admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
+admin_bp = Blueprint('admin', __name__)
 
+def admin_required(fn):
+    from functools import wraps
+    @wraps(fn)
+    @jwt_required()
+    def wrapper(*args, **kwargs):
+        uid = int(get_jwt_identity())
+        user = User.query.get(uid)
+        if not user or user.role != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+        return fn(*args, **kwargs)
+    return wrapper
 
-def _require_admin():
-    claims = get_jwt()
-    if claims.get("role") != "admin":
-        return jsonify({"error": "Admin access required."}), 403
-    return None
+@admin_bp.route('/dashboard', methods=['GET'])
+@admin_required
+def dashboard():
+    cache_key = 'admin:dashboard'
+    cached = cache.get(cache_key)
+    if cached:
+        return jsonify(json.loads(cached)), 200
 
-
-def _err(msg, code=400):
-    return jsonify({"error": msg}), code
-
-
-# ── dashboard stats ───────────────────────────────────────────────────────────
-
-@admin_bp.route("/stats", methods=["GET"])
-@jwt_required()
-@cache.cached(timeout=120, key_prefix="admin_stats")
-def get_stats():
-    guard = _require_admin()
-    if guard:
-        return guard
-    return jsonify({
-        "total_students":    StudentProfile.query.count(),
-        "total_companies":   CompanyProfile.query.count(),
-        "approved_companies":CompanyProfile.query.filter_by(approval_status="approved").count(),
-        "pending_companies": CompanyProfile.query.filter_by(approval_status="pending").count(),
-        "total_drives":      PlacementDrive.query.count(),
-        "approved_drives":   PlacementDrive.query.filter_by(status="approved").count(),
-        "pending_drives":    PlacementDrive.query.filter_by(status="pending").count(),
-        "total_applications":Application.query.count(),
-        "selected_students": Application.query.filter_by(status="selected").count(),
-    })
-
-
-# ── companies management ──────────────────────────────────────────────────────
-
-@admin_bp.route("/companies", methods=["GET"])
-@jwt_required()
-def list_companies():
-    guard = _require_admin()
-    if guard:
-        return guard
-
-    status = request.args.get("status", "")
-    search = request.args.get("search", "").strip()
-    page   = int(request.args.get("page", 1))
-    per_pg = int(request.args.get("per_page", 10))
-
-    q = CompanyProfile.query
-    if status:
-        q = q.filter_by(approval_status=status)
-    if search:
-        q = q.filter(CompanyProfile.company_name.ilike(f"%{search}%"))
-
-    pagination = q.order_by(CompanyProfile.registered_at.desc()).paginate(page=page, per_page=per_pg, error_out=False)
-    return jsonify({
-        "companies":  [c.to_dict(include_drives=True) for c in pagination.items],
-        "total":      pagination.total,
-        "pages":      pagination.pages,
-        "current_page": page,
-    })
+    stats = {
+        'total_students': Student.query.count(),
+        'total_companies': Company.query.filter_by(approval_status='approved').count(),
+        'total_drives': PlacementDrive.query.count(),
+        'total_applications': Application.query.count(),
+        'pending_companies': Company.query.filter_by(approval_status='pending').count(),
+        'pending_drives': PlacementDrive.query.filter_by(status='pending').count(),
+        'selected_students': Application.query.filter_by(status='selected').count(),
+    }
+    cache.setex(cache_key, 60, json.dumps(stats))
+    return jsonify(stats), 200
 
 
-@admin_bp.route("/companies/<int:company_id>", methods=["PATCH"])
-@jwt_required()
-def update_company(company_id):
-    guard = _require_admin()
-    if guard:
-        return guard
+@admin_bp.route('/companies', methods=['GET'])
+@admin_required
+def get_companies():
+    q = request.args.get('q', '').strip()
+    query = Company.query
+    if q:
+        query = query.filter(Company.company_name.ilike(f'%{q}%'))
+    companies = [c.to_dict() for c in query.order_by(Company.id.desc()).all()]
+    return jsonify(companies), 200
 
-    cp   = CompanyProfile.query.get_or_404(company_id)
-    body = request.get_json(silent=True) or {}
+@admin_bp.route('/companies/<int:cid>/action', methods=['POST'])
+@admin_required
+def company_action(cid):
+    data = request.get_json()
+    action = data.get('action')
+    comp = Company.query.get_or_404(cid)
+    user = User.query.get(comp.user_id)
 
-    if "approval_status" in body and body["approval_status"] in ("approved", "rejected", "pending"):
-        cp.approval_status = body["approval_status"]
-
-    if "is_blacklisted" in body:
-        cp.user.is_blacklisted = bool(body["is_blacklisted"])
-
-    if "is_active" in body:
-        cp.user.is_active = bool(body["is_active"])
+    actions = {
+        'approve': lambda: setattr(comp, 'approval_status', 'approved'),
+        'reject': lambda: setattr(comp, 'approval_status', 'rejected'),
+        'blacklist': lambda: setattr(user, 'is_blacklisted', True),
+        'unblacklist': lambda: setattr(user, 'is_blacklisted', False),
+        'deactivate': lambda: setattr(user, 'is_active', False),
+        'activate': lambda: setattr(user, 'is_active', True),
+    }
+    if action == 'delete':
+        db.session.delete(user)
+    elif action in actions:
+        actions[action]()
+    else:
+        return jsonify({'error': 'Unknown action'}), 400
 
     db.session.commit()
-    cache.delete("admin_stats")
-    return jsonify({"message": "Company updated.", "company": cp.to_dict()})
+    cache.delete('admin:dashboard')
+    return jsonify({'message': 'Done'}), 200
 
 
-# ── students management ───────────────────────────────────────────────────────
-
-@admin_bp.route("/students", methods=["GET"])
-@jwt_required()
-def list_students():
-    guard = _require_admin()
-    if guard:
-        return guard
-
-    search = request.args.get("search", "").strip()
-    branch = request.args.get("branch", "").strip()
-    page   = int(request.args.get("page", 1))
-    per_pg = int(request.args.get("per_page", 10))
-
-    q = StudentProfile.query.join(User)
-    if search:
-        q = q.filter(
-            db.or_(
-                StudentProfile.full_name.ilike(f"%{search}%"),
-                StudentProfile.roll_number.ilike(f"%{search}%"),
-                User.email.ilike(f"%{search}%"),
-            )
+@admin_bp.route('/students', methods=['GET'])
+@admin_required
+def get_students():
+    q = request.args.get('q', '').strip()
+    query = Student.query.join(User)
+    if q:
+        query = query.filter(
+            db.or_(Student.name.ilike(f'%{q}%'), Student.roll_number.ilike(f'%{q}%'),
+                   User.email.ilike(f'%{q}%'), Student.phone.ilike(f'%{q}%'))
         )
-    if branch:
-        q = q.filter(StudentProfile.branch.ilike(f"%{branch}%"))
+    return jsonify([s.to_dict() for s in query.order_by(Student.id.desc()).all()]), 200
 
-    pagination = q.order_by(StudentProfile.id.desc()).paginate(page=page, per_page=per_pg, error_out=False)
-    return jsonify({
-        "students": [s.to_dict() for s in pagination.items],
-        "total":    pagination.total,
-        "pages":    pagination.pages,
-        "current_page": page,
-    })
+@admin_bp.route('/students/<int:sid>/action', methods=['POST'])
+@admin_required
+def student_action(sid):
+    data = request.get_json()
+    action = data.get('action')
+    student = Student.query.get_or_404(sid)
+    user = User.query.get(student.user_id)
 
-
-@admin_bp.route("/students/<int:student_id>", methods=["PATCH"])
-@jwt_required()
-def update_student(student_id):
-    guard = _require_admin()
-    if guard:
-        return guard
-
-    sp   = StudentProfile.query.get_or_404(student_id)
-    body = request.get_json(silent=True) or {}
-
-    if "is_blacklisted" in body:
-        sp.user.is_blacklisted = bool(body["is_blacklisted"])
-    if "is_active" in body:
-        sp.user.is_active = bool(body["is_active"])
+    if action == 'blacklist': user.is_blacklisted = True
+    elif action == 'unblacklist': user.is_blacklisted = False
+    elif action == 'deactivate': user.is_active = False
+    elif action == 'activate': user.is_active = True
+    elif action == 'delete': db.session.delete(user)
+    else: return jsonify({'error': 'Unknown action'}), 400
 
     db.session.commit()
-    return jsonify({"message": "Student updated.", "student": sp.to_dict()})
+    cache.delete('admin:dashboard')
+    return jsonify({'message': 'Done'}), 200
 
 
-# ── drives management ─────────────────────────────────────────────────────────
+@admin_bp.route('/drives', methods=['GET'])
+@admin_required
+def get_drives():
+    drives = PlacementDrive.query.order_by(PlacementDrive.id.desc()).all()
+    return jsonify([d.to_dict() for d in drives]), 200
 
-@admin_bp.route("/drives", methods=["GET"])
-@jwt_required()
-def list_drives():
-    guard = _require_admin()
-    if guard:
-        return guard
-
-    status = request.args.get("status", "")
-    page   = int(request.args.get("page", 1))
-    per_pg = int(request.args.get("per_page", 10))
-
-    q = PlacementDrive.query
-    if status:
-        q = q.filter_by(status=status)
-
-    pagination = q.order_by(PlacementDrive.created_at.desc()).paginate(page=page, per_page=per_pg, error_out=False)
-    return jsonify({
-        "drives": [d.to_dict() for d in pagination.items],
-        "total":  pagination.total,
-        "pages":  pagination.pages,
-        "current_page": page,
-    })
+@admin_bp.route('/drives/<int:did>/action', methods=['POST'])
+@admin_required
+def drive_action(did):
+    data = request.get_json()
+    action = data.get('action')
+    drive = PlacementDrive.query.get_or_404(did)
+    if action == 'approve': drive.status = 'approved'
+    elif action == 'reject': drive.status = 'closed'
+    else: return jsonify({'error': 'Unknown action'}), 400
+    db.session.commit()
+    cache.delete(f'drives:approved')
+    return jsonify({'message': 'Done'}), 200
 
 
-@admin_bp.route("/drives/<int:drive_id>", methods=["PATCH"])
-@jwt_required()
-def update_drive_status(drive_id):
-    guard = _require_admin()
-    if guard:
-        return guard
-
-    drive = PlacementDrive.query.get_or_404(drive_id)
-    body  = request.get_json(silent=True) or {}
-
-    if "status" in body and body["status"] in ("approved", "rejected", "closed", "pending"):
-        drive.status = body["status"]
-        db.session.commit()
-        cache.delete("admin_stats")
-        cache.delete("approved_drives")
-        return jsonify({"message": "Drive status updated.", "drive": drive.to_dict()})
-
-    return _err("Invalid or missing status value.")
-
-
-# ── applications overview ──────────────────────────────────────────────────────
-
-@admin_bp.route("/applications", methods=["GET"])
-@jwt_required()
-def list_applications():
-    guard = _require_admin()
-    if guard:
-        return guard
-
-    status = request.args.get("status", "")
-    page   = int(request.args.get("page", 1))
-    per_pg = int(request.args.get("per_page", 15))
-
-    q = Application.query
-    if status:
-        q = q.filter_by(status=status)
-
-    pagination = q.order_by(Application.applied_at.desc()).paginate(page=page, per_page=per_pg, error_out=False)
-    return jsonify({
-        "applications": [a.to_dict(include_student=True, include_drive=True) for a in pagination.items],
-        "total":  pagination.total,
-        "pages":  pagination.pages,
-        "current_page": page,
-    })
-
-
-# ── monthly report data ────────────────────────────────────────────────────────
-
-@admin_bp.route("/report/monthly", methods=["GET"])
-@jwt_required()
-def monthly_report():
-    guard = _require_admin()
-    if guard:
-        return guard
-
-    month = int(request.args.get("month", datetime.utcnow().month))
-    year  = int(request.args.get("year",  datetime.utcnow().year))
-
-    drives = PlacementDrive.query.filter(
-        db.extract("month", PlacementDrive.created_at) == month,
-        db.extract("year",  PlacementDrive.created_at) == year,
-    ).all()
-
-    drive_ids = [d.id for d in drives]
-    apps = Application.query.filter(Application.drive_id.in_(drive_ids)).all() if drive_ids else []
-
-    return jsonify({
-        "month": month,
-        "year":  year,
-        "drives_conducted": len(drives),
-        "total_applications": len(apps),
-        "students_selected": sum(1 for a in apps if a.status == "selected"),
-        "students_shortlisted": sum(1 for a in apps if a.status == "shortlisted"),
-        "drives": [d.to_dict() for d in drives],
-    })
+@admin_bp.route('/applications', methods=['GET'])
+@admin_required
+def get_applications():
+    apps = Application.query.order_by(Application.id.desc()).all()
+    return jsonify([a.to_dict() for a in apps]), 200

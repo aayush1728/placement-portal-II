@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+instance/
+backend/instance/
+uploads/*
+.env
+backend/tasks/.env
+*.db
+celerybeat-schedule.*

@@ -1,107 +1,715 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Placement Portal</title>
-
-  <!-- Bootstrap 5 -->
-  <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" />
-  <!-- Bootstrap Icons -->
-  <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" />
-
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PlaceHub — Placement Portal</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css"/>
   <style>
-    :root {
-      --ppa-primary: #1a237e;
-      --ppa-accent:  #3949ab;
-      --ppa-light:   #e8eaf6;
-    }
-
-    body { background: #f4f6fb; font-family: 'Segoe UI', sans-serif; }
-
-    /* Sidebar */
-    .sidebar {
-      min-height: 100vh;
-      background: var(--ppa-primary);
-      color: #fff;
-      width: 250px;
-      transition: width 0.2s;
-      flex-shrink: 0;
-    }
-    .sidebar .brand { font-size: 1.2rem; font-weight: 700; padding: 1.4rem 1rem; letter-spacing: 1px; }
-    .sidebar .nav-link { color: rgba(255,255,255,.8); border-radius: 6px; margin: 2px 8px; }
-    .sidebar .nav-link:hover, .sidebar .nav-link.active { background: rgba(255,255,255,.15); color: #fff; }
-    .sidebar .nav-link i { margin-right: 8px; }
-
-    /* Cards */
-    .stat-card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
-    .stat-card .icon-wrap { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
-
-    /* Navbar top */
-    .top-bar { background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.08); padding: .75rem 1.5rem; }
-
-    /* Badges */
-    .badge-applied  { background: #1565c0; }
-    .badge-shortlisted { background: #f57c00; }
-    .badge-selected { background: #2e7d32; }
-    .badge-rejected { background: #c62828; }
-    .badge-interview_scheduled { background: #6a1b9a; }
-    .badge-pending  { background: #616161; }
-    .badge-approved { background: #2e7d32; }
-
-    /* Drive card */
-    .drive-card { transition: transform .15s; }
-    .drive-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
-
-    /* Loader */
-    .ppa-loader { display: flex; justify-content: center; align-items: center; min-height: 200px; }
-
-    /* Toast */
-    .toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; }
-
-    /* Login page */
-    .auth-card { border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,.12); max-width: 460px; }
-    .auth-brand { color: var(--ppa-primary); font-weight: 800; font-size: 1.8rem; }
+    [v-cloak] { display: none; }
+    body { background: #f0f2f5; }
+    .sidebar { min-height: 100vh; background: #1a1a2e; width: 230px; flex-shrink: 0; }
+    .sidebar .brand { color: #fff; font-size: 1.25rem; font-weight: 700; padding: 20px 16px; letter-spacing: .5px; }
+    .sidebar .nav-link { color: #adb5bd; padding: 10px 16px; border-radius: 8px; margin: 2px 8px; transition: all .2s; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { background: rgba(255,255,255,.08); color: #fff; }
+    .main { flex: 1; padding: 28px; overflow-y: auto; }
+    .card { border: none; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+    .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+    .table thead th { background: #f8f9fa; font-size: .82rem; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; border: none; }
+    .table td { vertical-align: middle; }
+    .badge { font-size: .75rem; }
+    .spinner-overlay { position: fixed; inset: 0; background: rgba(255,255,255,.7); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+    .drive-card { border-left: 4px solid #0d6efd; }
+    .auth-wrap { min-height: 100vh; background: linear-gradient(135deg,#1a1a2e,#16213e); display: flex; align-items: center; justify-content: center; }
   </style>
 </head>
 <body>
-  <div id="app"></div>
+<div id="app" v-cloak>
 
-  <!-- Vue 3 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
-  <!-- Vue Router 4 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue-router/4.3.0/vue-router.global.prod.min.js"></script>
-  <!-- Axios -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.7/axios.min.js"></script>
-  <!-- Bootstrap 5 JS -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
-  <!-- Chart.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
-  <!-- App Modules -->
-  <script src="/src/store.js"></script>
-  <script src="/src/api.js"></script>
-  <script src="/src/components/common/Navbar.js"></script>
-  <script src="/src/components/common/Toast.js"></script>
-  <script src="/src/components/auth/LoginPage.js"></script>
-  <script src="/src/components/auth/StudentRegister.js"></script>
-  <script src="/src/components/auth/CompanyRegister.js"></script>
-  <script src="/src/components/admin/AdminDashboard.js"></script>
-  <script src="/src/components/admin/AdminCompanies.js"></script>
-  <script src="/src/components/admin/AdminStudents.js"></script>
-  <script src="/src/components/admin/AdminDrives.js"></script>
-  <script src="/src/components/admin/AdminApplications.js"></script>
-  <script src="/src/components/company/CompanyDashboard.js"></script>
-  <script src="/src/components/company/CompanyDrives.js"></script>
-  <script src="/src/components/company/DriveForm.js"></script>
-  <script src="/src/components/company/DriveApplications.js"></script>
-  <script src="/src/components/student/StudentDashboard.js"></script>
-  <script src="/src/components/student/AvailableDrives.js"></script>
-  <script src="/src/components/student/MyApplications.js"></script>
-  <script src="/src/components/student/StudentProfile.js"></script>
-  <script src="/src/router.js"></script>
-  <script src="/src/main.js"></script>
+  <div class="spinner-overlay" v-if="loading">
+    <div class="spinner-border text-primary" style="width:3rem;height:3rem;"></div>
+  </div>
+
+  
+  <div v-if="!auth.token">
+    <div v-if="page === 'login'" class="auth-wrap">
+      <div class="card p-5" style="width:420px;">
+        <div class="text-center mb-4">
+          <i class="bi bi-mortarboard-fill text-primary" style="font-size:2.5rem;"></i>
+          <h4 class="fw-bold mt-2">Placement Cell</h4>
+          <p class="text-muted small">Campus Placement Portal</p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Email</label>
+          <input type="email" class="form-control form-control-lg" v-model="loginForm.email" placeholder="you@example.com" @keyup.enter="doLogin">
+        </div>
+        <div class="mb-4">
+          <label class="form-label fw-semibold">Password</label>
+          <input type="password" class="form-control form-control-lg" v-model="loginForm.password" placeholder="••••••••" @keyup.enter="doLogin">
+        </div>
+        <div class="alert alert-danger py-2 small" v-if="loginError">{{ loginError }}</div>
+        <button class="btn btn-primary btn-lg w-100" @click="doLogin">Sign In</button>
+        <hr class="my-4">
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary flex-fill btn-sm" @click="page='reg_student'"><i class="bi bi-person-plus me-1"></i>Student</button>
+          <button class="btn btn-outline-secondary flex-fill btn-sm" @click="page='reg_company'"><i class="bi bi-building-add me-1"></i>Company</button>
+        </div>
+      </div>
+    </div>
+
+  
+    <div v-if="page === 'reg_student'" class="auth-wrap">
+      <div class="card p-5" style="width:520px;">
+        <h5 class="fw-bold mb-4"><i class="bi bi-person-plus text-primary me-2"></i>Student Registration</h5>
+        <div class="row g-3">
+          <div class="col-12"><label class="form-label fw-semibold">Full Name</label><input class="form-control" v-model="sReg.name" placeholder="John Doe"></div>
+          <div class="col-12"><label class="form-label fw-semibold">Email</label><input type="email" class="form-control" v-model="sReg.email"></div>
+          <div class="col-12"><label class="form-label fw-semibold">Password</label><input type="password" class="form-control" v-model="sReg.password"></div>
+          <div class="col-6"><label class="form-label fw-semibold">Roll Number</label><input class="form-control" v-model="sReg.roll_number"></div>
+          <div class="col-6"><label class="form-label fw-semibold">Branch</label>
+            <select class="form-select" v-model="sReg.branch"><option>CS</option><option>IT</option><option>ECE</option><option>EEE</option><option>ME</option><option>CE</option><option>Other</option></select>
+          </div>
+          <div class="col-6"><label class="form-label fw-semibold">CGPA</label><input type="number" class="form-control" v-model="sReg.cgpa" step="0.01" min="0" max="10"></div>
+          <div class="col-6"><label class="form-label fw-semibold">Year</label>
+            <select class="form-select" v-model="sReg.year"><option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="4">4th</option></select>
+          </div>
+          <div class="col-12"><label class="form-label fw-semibold">Phone</label><input class="form-control" v-model="sReg.phone"></div>
+        </div>
+        <div class="alert alert-danger py-2 small mt-3" v-if="regError">{{ regError }}</div>
+        <div class="alert alert-success py-2 small mt-3" v-if="regSuccess">{{ regSuccess }}</div>
+        <div class="d-flex gap-2 mt-4">
+          <button class="btn btn-primary flex-fill" @click="doStudentRegister">Register</button>
+          <button class="btn btn-outline-secondary flex-fill" @click="page='login'">Back</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="page === 'reg_company'" class="auth-wrap">
+      <div class="card p-5" style="width:520px;">
+        <h5 class="fw-bold mb-4"><i class="bi bi-building-add text-primary me-2"></i>Company Registration</h5>
+        <div class="row g-3">
+          <div class="col-12"><label class="form-label fw-semibold">Company Name</label><input class="form-control" v-model="cReg.company_name"></div>
+          <div class="col-12"><label class="form-label fw-semibold">HR Email</label><input type="email" class="form-control" v-model="cReg.email"></div>
+          <div class="col-12"><label class="form-label fw-semibold">Password</label><input type="password" class="form-control" v-model="cReg.password"></div>
+          <div class="col-12"><label class="form-label fw-semibold">HR Contact</label><input class="form-control" v-model="cReg.hr_contact"></div>
+          <div class="col-12"><label class="form-label fw-semibold">Website</label><input class="form-control" v-model="cReg.website" placeholder="https://..."></div>
+          <div class="col-12"><label class="form-label fw-semibold">Description</label><textarea class="form-control" v-model="cReg.description" rows="3"></textarea></div>
+        </div>
+        <div class="alert alert-danger py-2 small mt-3" v-if="regError">{{ regError }}</div>
+        <div class="alert alert-success py-2 small mt-3" v-if="regSuccess">{{ regSuccess }}</div>
+        <div class="d-flex gap-2 mt-4">
+          <button class="btn btn-primary flex-fill" @click="doCompanyRegister">Submit for Approval</button>
+          <button class="btn btn-outline-secondary flex-fill" @click="page='login'">Back</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div v-else class="d-flex" style="min-height:100vh;">
+    <div class="sidebar d-flex flex-column py-3">
+      <div class="brand"><i class="bi bi-mortarboard-fill me-2 text-primary"></i>PlaceHub</div>
+      <div class="px-3 mb-3">
+        <span class="badge bg-primary text-uppercase" style="font-size:.7rem;letter-spacing:1px;">{{ auth.user.role }}</span>
+        <div class="text-white-50 small mt-1 text-truncate">{{ auth.user.email }}</div>
+      </div>
+      <nav class="nav flex-column">
+        <template v-if="auth.user.role === 'admin'">
+          <a class="nav-link" :class="{active:page==='admin_dash'}" @click="goto('admin_dash')" href="#"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+          <a class="nav-link" :class="{active:page==='admin_companies'}" @click="goto('admin_companies')" href="#"><i class="bi bi-building me-2"></i>Companies</a>
+          <a class="nav-link" :class="{active:page==='admin_students'}" @click="goto('admin_students')" href="#"><i class="bi bi-people me-2"></i>Students</a>
+          <a class="nav-link" :class="{active:page==='admin_drives'}" @click="goto('admin_drives')" href="#"><i class="bi bi-briefcase me-2"></i>Drives</a>
+          <a class="nav-link" :class="{active:page==='admin_apps'}" @click="goto('admin_apps')" href="#"><i class="bi bi-file-text me-2"></i>Applications</a>
+        </template>
+
+        <template v-else-if="auth.user.role === 'company'">
+          <a class="nav-link" :class="{active:page==='co_dash'}" @click="goto('co_dash')" href="#"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+          <a class="nav-link" :class="{active:page==='co_create_drive'}" @click="goto('co_create_drive')" href="#"><i class="bi bi-plus-circle me-2"></i>New Drive</a>
+        </template>
+
+        <template v-else>
+          <a class="nav-link" :class="{active:page==='st_dash'}" @click="goto('st_dash')" href="#"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a>
+          <a class="nav-link" :class="{active:page==='st_profile'}" @click="goto('st_profile')" href="#"><i class="bi bi-person me-2"></i>Profile</a>
+          <a class="nav-link" :class="{active:page==='st_history'}" @click="goto('st_history')" href="#"><i class="bi bi-clock-history me-2"></i>History</a>
+        </template>
+      </nav>
+      <div class="mt-auto px-3 pb-3">
+        <button class="btn btn-outline-secondary btn-sm w-100" @click="doLogout"><i class="bi bi-box-arrow-left me-1"></i>Logout</button>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="alert alert-success alert-dismissible fade show" v-if="toast" role="alert">
+        {{ toast }}<button type="button" class="btn-close" @click="toast=''"></button>
+      </div>
+      <div class="alert alert-danger alert-dismissible fade show" v-if="toastErr" role="alert">
+        {{ toastErr }}<button type="button" class="btn-close" @click="toastErr=''"></button>
+      </div>
+
+      <div v-if="page==='admin_dash'">
+        <h4 class="fw-bold mb-4"><i class="bi bi-speedometer2 me-2 text-primary"></i>Admin Dashboard</h4>
+        <div class="alert alert-warning" v-if="stats.pending_companies > 0">
+          <i class="bi bi-exclamation-triangle me-2"></i><strong>{{ stats.pending_companies }}</strong> company registration(s) pending.
+          <a href="#" class="alert-link ms-2" @click="goto('admin_companies')">Review →</a>
+        </div>
+        <div class="alert alert-info" v-if="stats.pending_drives > 0">
+          <i class="bi bi-info-circle me-2"></i><strong>{{ stats.pending_drives }}</strong> drive(s) pending approval.
+          <a href="#" class="alert-link ms-2" @click="goto('admin_drives')">Review →</a>
+        </div>
+        <div class="row g-4">
+          <div class="col-md-3" v-for="s in statCards" :key="s.label">
+            <div class="card p-4 d-flex flex-row align-items-center gap-3">
+              <div class="stat-icon" :class="'bg-'+s.color+' bg-opacity-10'"><i :class="'bi '+s.icon+' text-'+s.color" style="font-size:1.5rem;"></i></div>
+              <div><div class="fs-2 fw-bold">{{ s.val }}</div><div class="text-muted small">{{ s.label }}</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='admin_companies'">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h4 class="fw-bold mb-0"><i class="bi bi-building me-2 text-primary"></i>Companies</h4>
+          <div class="d-flex gap-2">
+            <input class="form-control" v-model="searchQ" @input="debounceSearch('companies')" placeholder="Search by name..." style="width:260px;">
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table mb-0">
+              <thead><tr><th>#</th><th>Company</th><th>Email</th><th>Approval</th><th>Account</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr v-for="c in tableData" :key="c.id">
+                  <td class="text-muted small">{{ c.id }}</td>
+                  <td><strong>{{ c.company_name }}</strong><br><small class="text-muted">{{ c.hr_contact }}</small></td>
+                  <td class="small">{{ c.email }}</td>
+                  <td><span :class="statusBadge(c.approval_status)">{{ c.approval_status }}</span></td>
+                  <td>
+                    <span v-if="c.is_blacklisted" class="badge bg-dark">Blacklisted</span>
+                    <span v-else-if="!c.is_active" class="badge bg-secondary">Inactive</span>
+                    <span v-else class="badge bg-success">Active</span>
+                  </td>
+                  <td>
+                    <div class="d-flex flex-wrap gap-1">
+                      <button v-if="c.approval_status==='pending'" class="btn btn-success btn-sm" @click="companyAction(c.id,'approve')">Approve</button>
+                      <button v-if="c.approval_status==='pending'" class="btn btn-danger btn-sm" @click="companyAction(c.id,'reject')">Reject</button>
+                      <button v-if="!c.is_blacklisted" class="btn btn-outline-dark btn-sm" @click="companyAction(c.id,'blacklist')">Blacklist</button>
+                      <button v-else class="btn btn-outline-success btn-sm" @click="companyAction(c.id,'unblacklist')">Unblacklist</button>
+                      <button v-if="c.is_active" class="btn btn-outline-secondary btn-sm" @click="companyAction(c.id,'deactivate')">Deactivate</button>
+                      <button v-else class="btn btn-outline-primary btn-sm" @click="companyAction(c.id,'activate')">Activate</button>
+                      <button class="btn btn-outline-danger btn-sm" @click="companyAction(c.id,'delete')"><i class="bi bi-trash"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!tableData.length"><td colspan="6" class="text-center text-muted py-4">No companies found.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='admin_students'">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h4 class="fw-bold mb-0"><i class="bi bi-people me-2 text-primary"></i>Students</h4>
+          <input class="form-control" v-model="searchQ" @input="debounceSearch('students')" placeholder="Search name, roll, email..." style="width:300px;">
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table mb-0">
+              <thead><tr><th>Name / Roll</th><th>Email</th><th>Branch</th><th>CGPA</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr v-for="s in tableData" :key="s.id">
+                  <td><strong>{{ s.name }}</strong><br><small class="text-muted">{{ s.roll_number }}</small></td>
+                  <td class="small">{{ s.email }}</td>
+                  <td><span class="badge bg-secondary">{{ s.branch }}</span></td>
+                  <td>{{ s.cgpa }}</td>
+                  <td>
+                    <span v-if="s.is_blacklisted" class="badge bg-dark">Blacklisted</span>
+                    <span v-else-if="!s.is_active" class="badge bg-secondary">Inactive</span>
+                    <span v-else class="badge bg-success">Active</span>
+                  </td>
+                  <td>
+                    <div class="d-flex flex-wrap gap-1">
+                      <button v-if="!s.is_blacklisted" class="btn btn-outline-dark btn-sm" @click="studentAction(s.id,'blacklist')">Blacklist</button>
+                      <button v-else class="btn btn-outline-success btn-sm" @click="studentAction(s.id,'unblacklist')">Unblacklist</button>
+                      <button v-if="s.is_active" class="btn btn-outline-secondary btn-sm" @click="studentAction(s.id,'deactivate')">Deactivate</button>
+                      <button v-else class="btn btn-outline-primary btn-sm" @click="studentAction(s.id,'activate')">Activate</button>
+                      <button class="btn btn-outline-danger btn-sm" @click="studentAction(s.id,'delete')"><i class="bi bi-trash"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!tableData.length"><td colspan="6" class="text-center text-muted py-4">No students found.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='admin_drives'">
+        <h4 class="fw-bold mb-4"><i class="bi bi-briefcase me-2 text-primary"></i>Placement Drives</h4>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table mb-0">
+              <thead><tr><th>Job Title</th><th>Company</th><th>CGPA</th><th>Deadline</th><th>Package</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr v-for="d in tableData" :key="d.id">
+                  <td><strong>{{ d.job_title }}</strong><br><small class="text-muted">{{ d.branches_allowed }}</small></td>
+                  <td>{{ d.company_name }}</td>
+                  <td>{{ d.cgpa_required }}</td>
+                  <td class="small">{{ d.application_deadline }}</td>
+                  <td>{{ d.package_lpa ? d.package_lpa+' LPA' : '—' }}</td>
+                  <td><span :class="statusBadge(d.status)">{{ d.status }}</span></td>
+                  <td>
+                    <div class="d-flex gap-1" v-if="d.status==='pending'">
+                      <button class="btn btn-success btn-sm" @click="driveAction(d.id,'approve')">Approve</button>
+                      <button class="btn btn-danger btn-sm" @click="driveAction(d.id,'reject')">Reject</button>
+                    </div>
+                    <span v-else class="text-muted small">—</span>
+                  </td>
+                </tr>
+                <tr v-if="!tableData.length"><td colspan="7" class="text-center text-muted py-4">No drives yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='admin_apps'">
+        <h4 class="fw-bold mb-4"><i class="bi bi-file-text me-2 text-primary"></i>All Applications</h4>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table mb-0">
+              <thead><tr><th>Student</th><th>Drive</th><th>Company</th><th>Applied</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr v-for="a in tableData" :key="a.id">
+                  <td><strong>{{ a.student_name }}</strong><br><small class="text-muted">{{ a.roll_number }}</small></td>
+                  <td>{{ a.job_title }}</td>
+                  <td>{{ a.company_name }}</td>
+                  <td class="small">{{ a.application_date?.slice(0,10) }}</td>
+                  <td><span :class="appBadge(a.status)">{{ a.status }}</span></td>
+                </tr>
+                <tr v-if="!tableData.length"><td colspan="5" class="text-center text-muted py-4">No applications yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='co_dash'">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h4 class="fw-bold mb-0">{{ auth.profile?.company_name }}</h4>
+            <span class="text-muted small">{{ auth.profile?.hr_contact }}</span>
+          </div>
+          <button class="btn btn-primary" @click="goto('co_create_drive')"><i class="bi bi-plus-circle me-1"></i>New Drive</button>
+        </div>
+        <div class="row g-4 mb-4">
+          <div class="col-md-4"><div class="card p-4"><div class="text-muted small">Total Drives</div><div class="fs-2 fw-bold">{{ coDrives.length }}</div></div></div>
+          <div class="col-md-4"><div class="card p-4"><div class="text-muted small">Total Applicants</div><div class="fs-2 fw-bold">{{ coDrives.reduce((a,d)=>a+d.applicant_count,0) }}</div></div></div>
+          <div class="col-md-4"><div class="card p-4"><div class="text-muted small">Website</div><div class="small text-truncate">{{ auth.profile?.website || '—' }}</div></div></div>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table mb-0">
+              <thead><tr><th>Job Title</th><th>Deadline</th><th>Package</th><th>Applicants</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr v-for="d in coDrives" :key="d.id">
+                  <td><strong>{{ d.job_title }}</strong><br><small class="text-muted">{{ d.branches_allowed }}</small></td>
+                  <td class="small">{{ d.application_deadline }}</td>
+                  <td>{{ d.package_lpa ? d.package_lpa+' LPA' : '—' }}</td>
+                  <td><span class="badge bg-primary rounded-pill">{{ d.applicant_count }}</span></td>
+                  <td><span :class="statusBadge(d.status)">{{ d.status }}</span></td>
+                  <td>
+                    <div class="d-flex gap-1 flex-wrap">
+                      <button class="btn btn-outline-primary btn-sm" @click="viewApplications(d)"><i class="bi bi-eye"></i></button>
+                      <button class="btn btn-outline-secondary btn-sm" @click="editDrive(d)"><i class="bi bi-pencil"></i></button>
+                      <button v-if="d.status!=='closed'" class="btn btn-outline-warning btn-sm" @click="closeDrive(d.id)">Close</button>
+                      <button class="btn btn-outline-danger btn-sm" @click="deleteDrive(d.id)"><i class="bi bi-trash"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!coDrives.length"><td colspan="6" class="text-center text-muted py-4">No drives yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='co_create_drive' || page==='co_edit_drive'">
+        <div class="d-flex align-items-center gap-3 mb-4">
+          <button class="btn btn-outline-secondary btn-sm" @click="goto('co_dash')"><i class="bi bi-arrow-left"></i></button>
+          <h4 class="fw-bold mb-0">{{ page==='co_create_drive' ? 'Create Drive' : 'Edit Drive' }}</h4>
+        </div>
+        <div class="card p-4" style="max-width:700px;">
+          <div class="row g-3">
+            <div class="col-12"><label class="form-label fw-semibold">Job Title *</label><input class="form-control" v-model="driveForm.job_title"></div>
+            <div class="col-12"><label class="form-label fw-semibold">Job Description</label><textarea class="form-control" v-model="driveForm.job_description" rows="4"></textarea></div>
+            <div class="col-12"><label class="form-label fw-semibold">Eligibility Criteria</label><textarea class="form-control" v-model="driveForm.eligibility_criteria" rows="2"></textarea></div>
+            <div class="col-4"><label class="form-label fw-semibold">Min CGPA</label><input type="number" class="form-control" v-model="driveForm.cgpa_required" step="0.01" min="0" max="10"></div>
+            <div class="col-4"><label class="form-label fw-semibold">Package (LPA)</label><input type="number" class="form-control" v-model="driveForm.package_lpa" step="0.1"></div>
+            <div class="col-4"><label class="form-label fw-semibold">Deadline *</label><input type="date" class="form-control" v-model="driveForm.application_deadline"></div>
+            <div class="col-12"><label class="form-label fw-semibold">Branches Allowed</label><input class="form-control" v-model="driveForm.branches_allowed" placeholder="e.g. CS, IT or All"></div>
+            <div class="col-12 d-flex gap-2 mt-2">
+              <button class="btn btn-primary" @click="saveDrive">{{ page==='co_create_drive' ? 'Submit for Approval' : 'Save Changes' }}</button>
+              <button class="btn btn-outline-secondary" @click="goto('co_dash')">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='co_apps'">
+        <div class="d-flex align-items-center gap-3 mb-4">
+          <button class="btn btn-outline-secondary btn-sm" @click="goto('co_dash')"><i class="bi bi-arrow-left"></i></button>
+          <h4 class="fw-bold mb-0">Applications — {{ selectedDrive?.job_title }}</h4>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table mb-0">
+              <thead><tr><th>Student</th><th>Branch</th><th>CGPA</th><th>Phone</th><th>Resume</th><th>Applied</th><th>Status</th><th>Update</th></tr></thead>
+              <tbody>
+                <tr v-for="a in coApps" :key="a.id">
+                  <td><strong>{{ a.student_name }}</strong><br><small class="text-muted">{{ a.roll_number }} · {{ a.email }}</small></td>
+                  <td>{{ a.branch }}</td>
+                  <td>{{ a.cgpa }}</td>
+                  <td class="small">{{ a.phone || '—' }}</td>
+                  <td>
+                    <a v-if="a.resume_filename" :href="API+'/student/uploads/'+a.resume_filename" target="_blank" class="btn btn-outline-primary btn-sm"><i class="bi bi-file-earmark-pdf"></i></a>
+                    <span v-else class="text-muted small">—</span>
+                  </td>
+                  <td class="small">{{ a.application_date?.slice(0,10) }}</td>
+                  <td><span :class="appBadge(a.status)">{{ a.status }}</span></td>
+                  <td>
+                    <div class="d-flex gap-1">
+                      <select class="form-select form-select-sm" v-model="a._newStatus" style="width:130px;">
+                        <option v-for="s in ['applied','shortlisted','selected','rejected']" :value="s">{{ s }}</option>
+                      </select>
+                      <button class="btn btn-primary btn-sm" @click="setAppStatus(a)">Set</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!coApps.length"><td colspan="8" class="text-center text-muted py-4">No applications yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='st_dash'">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h4 class="fw-bold mb-0">Welcome, {{ auth.profile?.name }}</h4>
+            <span class="text-muted small">{{ auth.profile?.branch }} · CGPA: {{ auth.profile?.cgpa }} · Year {{ auth.profile?.year }}</span>
+          </div>
+          <input class="form-control" v-model="driveSearchQ" @input="searchDrives" placeholder="Search drives..." style="width:260px;">
+        </div>
+        <ul class="nav nav-tabs mb-4">
+          <li class="nav-item"><a class="nav-link" :class="{active:stTab==='drives'}" @click="stTab='drives'" href="#">Available Drives</a></li>
+          <li class="nav-item"><a class="nav-link" :class="{active:stTab==='applied'}" @click="stTab='applied'" href="#">My Applications ({{ myApps.length }})</a></li>
+        </ul>
+        <div v-if="stTab==='drives'">
+          <div class="row g-4">
+            <div class="col-md-4" v-for="d in stDrives" :key="d.id">
+              <div class="card h-100 drive-card">
+                <div class="card-body">
+                  <div class="d-flex justify-content-between mb-2">
+                    <h6 class="fw-bold mb-0">{{ d.job_title }}</h6>
+                    <span v-if="d.package_lpa" class="badge bg-success">{{ d.package_lpa }} LPA</span>
+                  </div>
+                  <p class="text-primary small mb-2">{{ d.company_name }}</p>
+                  <p class="text-muted small mb-2" v-if="d.job_description">{{ d.job_description.slice(0,100) }}{{ d.job_description.length>100?'...':'' }}</p>
+                  <div class="small text-muted">
+                    <div><i class="bi bi-mortarboard me-1"></i>Min CGPA: {{ d.cgpa_required }}</div>
+                    <div><i class="bi bi-diagram-3 me-1"></i>{{ d.branches_allowed }}</div>
+                    <div><i class="bi bi-calendar me-1"></i>Deadline: {{ d.application_deadline }}</div>
+                  </div>
+                </div>
+                <div class="card-footer bg-white border-0">
+                  <button v-if="appliedIds.has(d.id)" class="btn btn-secondary w-100" disabled><i class="bi bi-check-circle me-1"></i>Applied</button>
+                  <button v-else-if="auth.profile?.cgpa < d.cgpa_required" class="btn btn-outline-danger w-100" disabled><i class="bi bi-x-circle me-1"></i>Not Eligible</button>
+                  <button v-else class="btn btn-primary w-100" @click="applyDrive(d.id)"><i class="bi bi-send me-1"></i>Apply Now</button>
+                </div>
+              </div>
+            </div>
+            <div class="col-12" v-if="!stDrives.length"><div class="alert alert-info">No approved drives available.</div></div>
+          </div>
+        </div>
+        <div v-if="stTab==='applied'">
+          <div class="card">
+            <div class="table-responsive">
+              <table class="table mb-0">
+                <thead><tr><th>Company</th><th>Drive</th><th>Applied</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr v-for="a in myApps" :key="a.id">
+                    <td>{{ a.company_name }}</td>
+                    <td>{{ a.job_title }}</td>
+                    <td class="small">{{ a.application_date?.slice(0,10) }}</td>
+                    <td><span :class="appBadge(a.status)">{{ a.status }}</span></td>
+                  </tr>
+                  <tr v-if="!myApps.length"><td colspan="4" class="text-center text-muted py-4">No applications yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="page==='st_profile'">
+        <h4 class="fw-bold mb-4"><i class="bi bi-person-circle me-2 text-primary"></i>My Profile</h4>
+        <div class="card p-4" style="max-width:600px;">
+          <div class="row g-3">
+            <div class="col-12"><label class="form-label fw-semibold">Full Name</label><input class="form-control" v-model="profileForm.name"></div>
+            <div class="col-6"><label class="form-label fw-semibold">Branch</label>
+              <select class="form-select" v-model="profileForm.branch">
+                <option v-for="b in ['CS','IT','ECE','EEE','ME','CE','Other']">{{ b }}</option>
+              </select>
+            </div>
+            <div class="col-6"><label class="form-label fw-semibold">CGPA</label><input type="number" class="form-control" v-model="profileForm.cgpa" step="0.01" min="0" max="10"></div>
+            <div class="col-6"><label class="form-label fw-semibold">Year</label>
+              <select class="form-select" v-model="profileForm.year">
+                <option v-for="y in [1,2,3,4]" :value="y">Year {{ y }}</option>
+              </select>
+            </div>
+            <div class="col-6"><label class="form-label fw-semibold">Phone</label><input class="form-control" v-model="profileForm.phone"></div>
+            <div class="col-12 mt-2"><button class="btn btn-primary" @click="saveProfile">Save Changes</button></div>
+          </div>
+          <hr class="my-4">
+          <h6 class="fw-semibold mb-3">Resume Upload</h6>
+          <a v-if="auth.profile?.resume_filename" :href="API+'/student/uploads/'+auth.profile.resume_filename" target="_blank" class="btn btn-outline-success btn-sm mb-2 d-inline-block"><i class="bi bi-file-earmark-pdf me-1"></i>Current Resume</a>
+          <input type="file" class="form-control" @change="resumeFile=$event.target.files[0]" accept=".pdf,.doc,.docx">
+          <button class="btn btn-outline-primary mt-2" @click="uploadResume" :disabled="!resumeFile">Upload Resume</button>
+        </div>
+      </div>
+
+      <div v-if="page==='st_history'">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h4 class="fw-bold mb-0"><i class="bi bi-clock-history me-2 text-primary"></i>Placement History</h4>
+          <button class="btn btn-outline-primary btn-sm" @click="exportCSV"><i class="bi bi-download me-1"></i>Export CSV</button>
+        </div>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="table mb-0">
+              <thead><tr><th>Company</th><th>Job Title</th><th>Package</th><th>Applied</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr v-for="h in stHistory" :key="h.id">
+                  <td>{{ h.company_name }}</td>
+                  <td>{{ h.job_title }}</td>
+                  <td>{{ h.package_lpa ? h.package_lpa+' LPA' : '—' }}</td>
+                  <td class="small">{{ h.application_date?.slice(0,10) }}</td>
+                  <td><span :class="appBadge(h.status)">{{ h.status }}</span></td>
+                </tr>
+                <tr v-if="!stHistory.length"><td colspan="5" class="text-center text-muted py-4">No history yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+<script>
+const { createApp, ref, reactive, computed, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const API = 'http://localhost:5000/api';
+    const loading = ref(false);
+    const page = ref('login');
+    const toast = ref('');
+    const toastErr = ref('');
+    const searchQ = ref('');
+    const tableData = ref([]);
+    const stats = ref({});
+    const coDrives = ref([]);
+    const coApps = ref([]);
+    const stDrives = ref([]);
+    const stHistory = ref([]);
+    const myApps = ref([]);
+    const appliedIds = ref(new Set());
+    const stTab = ref('drives');
+    const driveSearchQ = ref('');
+    const selectedDrive = ref(null);
+    const resumeFile = ref(null);
+    let searchTimer = null;
+
+    const auth = reactive({ token: localStorage.getItem('ppa_token'), user: null, profile: null });
+    const loginForm = reactive({ email: '', password: '' });
+    const loginError = ref('');
+    const regError = ref('');
+    const regSuccess = ref('');
+    const sReg = reactive({ name:'', email:'', password:'', roll_number:'', branch:'CS', cgpa:0, year:4, phone:'' });
+    const cReg = reactive({ company_name:'', email:'', password:'', hr_contact:'', website:'', description:'' });
+    const driveForm = reactive({ job_title:'', job_description:'', eligibility_criteria:'', cgpa_required:0, package_lpa:0, application_deadline:'', branches_allowed:'All', _id: null });
+    const profileForm = reactive({ name:'', branch:'', cgpa:0, year:4, phone:'' });
+
+    const statCards = computed(() => [
+      { label: 'Students', val: stats.value.total_students||0, icon:'bi-people-fill', color:'primary' },
+      { label: 'Companies', val: stats.value.total_companies||0, icon:'bi-building', color:'success' },
+      { label: 'Drives', val: stats.value.total_drives||0, icon:'bi-briefcase-fill', color:'warning' },
+      { label: 'Applications', val: stats.value.total_applications||0, icon:'bi-file-text-fill', color:'info' },
+    ]);
+
+    function showToast(msg, err=false) {
+      if (err) { toastErr.value = msg; setTimeout(()=>toastErr.value='', 4000); }
+      else { toast.value = msg; setTimeout(()=>toast.value='', 3000); }
+    }
+
+    async function api(method, path, body=null, form=false) {
+      const opts = { method, headers: {} };
+      if (auth.token) opts.headers['Authorization'] = 'Bearer ' + auth.token;
+      if (body && !form) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      if (body && form) opts.body = body;
+      const r = await fetch(API + path, opts);
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    function statusBadge(s) {
+      return { 'badge':true, 'bg-success': s==='approved', 'bg-warning text-dark': s==='pending', 'bg-secondary': s==='closed'||s==='rejected', 'bg-danger': s==='rejected' };
+    }
+    function appBadge(s) {
+      return { 'badge':true, 'bg-secondary': s==='applied', 'bg-primary': s==='shortlisted', 'bg-success': s==='selected', 'bg-danger': s==='rejected' };
+    }
+
+    async function doLogin() {
+      loginError.value = '';
+      try {
+        loading.value = true;
+        const res = await api('POST', '/auth/login', loginForm);
+        auth.token = res.token;
+        auth.user = res.user;
+        auth.profile = res.profile;
+        localStorage.setItem('ppa_token', res.token);
+        routeHome();
+      } catch(e) { loginError.value = e.message; } finally { loading.value = false; }
+    }
+
+    async function doStudentRegister() {
+      regError.value = ''; regSuccess.value = '';
+      try {
+        loading.value = true;
+        await api('POST', '/auth/register/student', sReg);
+        regSuccess.value = 'Registered! You can now log in.';
+        setTimeout(() => page.value = 'login', 1500);
+      } catch(e) { regError.value = e.message; } finally { loading.value = false; }
+    }
+
+    async function doCompanyRegister() {
+      regError.value = ''; regSuccess.value = '';
+      try {
+        loading.value = true;
+        await api('POST', '/auth/register/company', cReg);
+        regSuccess.value = 'Submitted! Awaiting admin approval.';
+        setTimeout(() => page.value = 'login', 2000);
+      } catch(e) { regError.value = e.message; } finally { loading.value = false; }
+    }
+
+    function doLogout() { auth.token = null; auth.user = null; auth.profile = null; localStorage.removeItem('ppa_token'); page.value = 'login'; }
+
+    function routeHome() {
+      if (auth.user.role === 'admin') goto('admin_dash');
+      else if (auth.user.role === 'company') goto('co_dash');
+      else goto('st_dash');
+    }
+
+    async function goto(p) {
+      page.value = p; searchQ.value = ''; tableData.value = [];
+      if (p === 'admin_dash') { loading.value=true; try { stats.value = await api('GET','/admin/dashboard'); } catch{} finally{loading.value=false;} }
+      if (p === 'admin_companies') { loading.value=true; try { tableData.value = await api('GET','/admin/companies'); } catch{} finally{loading.value=false;} }
+      if (p === 'admin_students') { loading.value=true; try { tableData.value = await api('GET','/admin/students'); } catch{} finally{loading.value=false;} }
+      if (p === 'admin_drives') { loading.value=true; try { tableData.value = await api('GET','/admin/drives'); } catch{} finally{loading.value=false;} }
+      if (p === 'admin_apps') { loading.value=true; try { tableData.value = await api('GET','/admin/applications'); } catch{} finally{loading.value=false;} }
+      if (p === 'co_dash') { loading.value=true; try { const r=await api('GET','/company/dashboard'); coDrives.value=r.drives; } catch{} finally{loading.value=false;} }
+      if (p === 'st_dash') { loading.value=true; try { stDrives.value=await api('GET','/student/drives'); myApps.value=await api('GET','/student/applications'); appliedIds.value=new Set(myApps.value.map(a=>a.drive_id)); } catch{} finally{loading.value=false;} }
+      if (p === 'st_profile') { Object.assign(profileForm, { name:auth.profile?.name, branch:auth.profile?.branch, cgpa:auth.profile?.cgpa, year:auth.profile?.year, phone:auth.profile?.phone||'' }); }
+      if (p === 'st_history') { loading.value=true; try { stHistory.value=await api('GET','/student/history'); } catch{} finally{loading.value=false;} }
+      if (p === 'co_create_drive') { Object.assign(driveForm, {job_title:'',job_description:'',eligibility_criteria:'',cgpa_required:0,package_lpa:0,application_deadline:'',branches_allowed:'All',_id:null}); }
+    }
+
+    function debounceSearch(type) {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(async () => {
+        const path = type==='companies' ? `/admin/companies?q=${searchQ.value}` : `/admin/students?q=${searchQ.value}`;
+        try { tableData.value = await api('GET', path); } catch{}
+      }, 400);
+    }
+
+    async function companyAction(id, action) {
+      try { await api('POST', `/admin/companies/${id}/action`, {action}); showToast('Done!'); goto('admin_companies'); }
+      catch(e) { showToast(e.message, true); }
+    }
+    async function studentAction(id, action) {
+      try { await api('POST', `/admin/students/${id}/action`, {action}); showToast('Done!'); goto('admin_students'); }
+      catch(e) { showToast(e.message, true); }
+    }
+    async function driveAction(id, action) {
+      try { await api('POST', `/admin/drives/${id}/action`, {action}); showToast('Drive updated!'); goto('admin_drives'); }
+      catch(e) { showToast(e.message, true); }
+    }
+
+    async function saveDrive() {
+      if (!driveForm.job_title || !driveForm.application_deadline) { showToast('Job title and deadline required.', true); return; }
+      try {
+        loading.value = true;
+        if (driveForm._id) { await api('PUT', `/company/drives/${driveForm._id}`, driveForm); showToast('Drive updated!'); }
+        else { await api('POST', '/company/drives', driveForm); showToast('Drive submitted for approval!'); }
+        goto('co_dash');
+      } catch(e) { showToast(e.message, true); } finally { loading.value = false; }
+    }
+    function editDrive(d) { Object.assign(driveForm, d); driveForm._id = d.id; page.value = 'co_edit_drive'; }
+    async function closeDrive(id) { try { await api('POST', `/company/drives/${id}/close`); showToast('Drive closed.'); goto('co_dash'); } catch(e) { showToast(e.message, true); } }
+    async function deleteDrive(id) { if(!confirm('Delete this drive?')) return; try { await api('DELETE', `/company/drives/${id}`); showToast('Deleted.'); goto('co_dash'); } catch(e) { showToast(e.message, true); } }
+    async function viewApplications(d) { selectedDrive.value = d; loading.value=true; try { coApps.value=(await api('GET',`/company/drives/${d.id}/applications`)).map(a=>({...a,_newStatus:a.status})); page.value='co_apps'; } catch{} finally{loading.value=false;} }
+    async function setAppStatus(a) { try { await api('PUT', `/company/applications/${a.id}/status`, {status:a._newStatus}); a.status=a._newStatus; showToast('Status updated!'); } catch(e) { showToast(e.message, true); } }
+
+    async function applyDrive(id) {
+      try { await api('POST', `/student/apply/${id}`); showToast('Applied successfully!'); goto('st_dash'); }
+      catch(e) { showToast(e.message, true); }
+    }
+    async function searchDrives() {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(async () => {
+        try { stDrives.value = await api('GET', `/student/drives?q=${driveSearchQ.value}`); } catch{}
+      }, 400);
+    }
+    async function saveProfile() {
+      try { const r = await api('PUT', '/student/profile', profileForm); auth.profile = r.profile; showToast('Profile saved!'); }
+      catch(e) { showToast(e.message, true); }
+    }
+    async function uploadResume() {
+      if (!resumeFile.value) return;
+      const fd = new FormData(); fd.append('resume', resumeFile.value);
+      try { await api('POST', '/student/profile/resume', fd, true); showToast('Resume uploaded!'); const r=await api('GET','/auth/me'); auth.profile=r.profile; resumeFile.value=null; }
+      catch(e) { showToast(e.message, true); }
+    }
+    async function exportCSV() {
+      try { const r = await api('POST', '/student/export-csv'); showToast(r.message); }
+      catch(e) { showToast(e.message, true); }
+    }
+
+    onMounted(async () => {
+      if (auth.token) {
+        try {
+          const r = await api('GET', '/auth/me');
+          auth.user = r.user; auth.profile = r.profile;
+          routeHome();
+        } catch { doLogout(); }
+      }
+    });
+
+    return { API, loading, page, toast, toastErr, auth, loginForm, loginError, regError, regSuccess, sReg, cReg,
+             stats, statCards, tableData, searchQ, coDrives, coApps, stDrives, stHistory, myApps, appliedIds,
+             stTab, driveSearchQ, selectedDrive, driveForm, profileForm, resumeFile,
+             doLogin, doLogout, doStudentRegister, doCompanyRegister, goto,
+             debounceSearch, companyAction, studentAction, driveAction,
+             saveDrive, editDrive, closeDrive, deleteDrive, viewApplications, setAppStatus,
+             applyDrive, searchDrives, saveProfile, uploadResume, exportCSV,
+             statusBadge, appBadge };
+  }
+}).mount('#app');
+</script>
 </body>
 </html>

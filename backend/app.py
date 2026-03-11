@@ -1,93 +1,61 @@
+from dotenv import load_dotenv
+load_dotenv()
+
+from flask import Flask
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager
+from models import db, User, Student, Company, PlacementDrive, Application
+from werkzeug.security import generate_password_hash
+import redis
 import os
-from flask import Flask, jsonify, send_from_directory
-from config import config_map
-from extensions import db, jwt, mail, cache, cors, make_celery
-from models import User
 
+from extensions import cache
 
-def create_app(env: str = "development") -> Flask:
-    app = Flask(__name__, template_folder="templates", static_folder="static")
-    app.config.from_object(config_map.get(env, config_map["default"]))
+def create_app():
+    app = Flask(__name__)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///placement.db'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['JWT_SECRET_KEY'] = 'ppa_jwt_secret_2026_secure'
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False  # tokens don't expire for demo
+    app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+    app.config['MAIL_PORT'] = 587
+    app.config['MAIL_USE_TLS'] = True
+    app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
+    app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
+    app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_USERNAME', 'noreply@placement.com')
+    app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    # Ensure upload dir exists
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-
-    # Init extensions
+    CORS(app, origins='*', supports_credentials=True)
     db.init_app(app)
-    jwt.init_app(app)
-    mail.init_app(app)
-    cache.init_app(app)
-    cors.init_app(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+    JWTManager(app)
 
-    # Celery
-    make_celery(app)
+    from routes.auth import auth_bp
+    from routes.admin import admin_bp
+    from routes.company import company_bp
+    from routes.student import student_bp
 
-    # Blueprints
-    from routes import auth_bp, admin_bp, company_bp, student_bp, drives_bp
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(company_bp)
-    app.register_blueprint(student_bp)
-    app.register_blueprint(drives_bp)
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(admin_bp, url_prefix='/api/admin')
+    app.register_blueprint(company_bp, url_prefix='/api/company')
+    app.register_blueprint(student_bp, url_prefix='/api/student')
 
-    # Serve resume/export files
-    @app.route("/api/files/<path:filename>")
-    def serve_file(filename):
-        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
-
-    # Health check
-    @app.route("/api/health")
-    def health():
-        return jsonify({"status": "ok", "service": "Placement Portal API"})
-
-    # Catch-all: serve Vue SPA
-    @app.route("/", defaults={"path": ""})
-    @app.route("/<path:path>")
-    def spa_index(path):
-        from flask import render_template
-        return render_template("index.html")
-
-    # JWT error handlers
-    @jwt.expired_token_loader
-    def expired(_jwt_header, _jwt_data):
-        return jsonify({"error": "Token has expired. Please log in again."}), 401
-
-    @jwt.invalid_token_loader
-    def invalid(reason):
-        return jsonify({"error": f"Invalid token: {reason}"}), 422
-
-    @jwt.unauthorized_loader
-    def unauthorized(reason):
-        return jsonify({"error": "Authorization required."}), 401
-
-    # Generic error handlers
-    @app.errorhandler(404)
-    def not_found(_):
-        return jsonify({"error": "Resource not found."}), 404
-
-    @app.errorhandler(500)
-    def server_error(_):
-        return jsonify({"error": "Internal server error."}), 500
-
-    # DB init + seed admin
     with app.app_context():
         db.create_all()
-        _seed_admin(app)
+        _seed_admin()
 
     return app
 
-
-def _seed_admin(app: Flask):
-    """Create the admin user if it doesn't exist."""
-    email = app.config["ADMIN_EMAIL"]
-    if not User.query.filter_by(email=email, role="admin").first():
-        admin = User(email=email, role="admin")
-        admin.set_password(app.config["ADMIN_PASSWORD"])
+def _seed_admin():
+    if not User.query.filter_by(role='admin').first():
+        admin = User(email='admin@placement.com',
+                     password=generate_password_hash('admin123'),
+                     role='admin', is_active=True)
         db.session.add(admin)
         db.session.commit()
-        print(f"[Seed] Admin created: {email}")
+        print('Admin created: admin@placement.com / admin123')
 
+app = create_app()
 
-if __name__ == "__main__":
-    flask_app = create_app("development")
-    flask_app.run(debug=True, host="0.0.0.0", port=5000)
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)

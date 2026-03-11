@@ -1,163 +1,143 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import (
-    create_access_token, create_refresh_token,
-    jwt_required, get_jwt_identity, get_jwt,
-)
-from extensions import db, cache
-from models import User, StudentProfile, CompanyProfile
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from werkzeug.security import generate_password_hash, check_password_hash
+from models import db, User, Student, Company
+import re
 
-auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+auth_bp = Blueprint('auth', __name__)
 
-# ── helpers ─────────────────────────────────────────────────────────────────
+def valid_email(email):
+    return re.match(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$', email)
 
-def _err(msg, code=400):
-    return jsonify({"error": msg}), code
-
-def _ok(data, code=200):
-    return jsonify(data), code
-
-
-# ── register: student ───────────────────────────────────────────────────────
-
-@auth_bp.route("/register/student", methods=["POST"])
-def register_student():
-    body = request.get_json(silent=True) or {}
-    required = ["email", "password", "full_name", "roll_number"]
-    missing  = [f for f in required if not body.get(f)]
-    if missing:
-        return _err(f"Missing fields: {', '.join(missing)}")
-
-    if User.query.filter_by(email=body["email"].lower()).first():
-        return _err("Email already registered.", 409)
-
-    if StudentProfile.query.filter_by(roll_number=body["roll_number"]).first():
-        return _err("Roll number already in use.", 409)
-
-    user = User(email=body["email"].lower(), role="student")
-    user.set_password(body["password"])
-    db.session.add(user)
-    db.session.flush()
-
-    profile = StudentProfile(
-        user_id     = user.id,
-        full_name   = body["full_name"],
-        roll_number = body["roll_number"],
-        branch      = body.get("branch", ""),
-        cgpa        = float(body.get("cgpa", 0.0)),
-        year        = int(body.get("year", 1)),
-        grad_year   = int(body.get("grad_year", 2026)),
-        phone       = body.get("phone", ""),
-    )
-    db.session.add(profile)
-    db.session.commit()
-    cache.delete_memoized(_cached_admin_stats)
-    return _ok({"message": "Student registered successfully."}, 201)
-
-
-# ── register: company ───────────────────────────────────────────────────────
-
-@auth_bp.route("/register/company", methods=["POST"])
-def register_company():
-    body = request.get_json(silent=True) or {}
-    required = ["email", "password", "company_name"]
-    missing  = [f for f in required if not body.get(f)]
-    if missing:
-        return _err(f"Missing fields: {', '.join(missing)}")
-
-    if User.query.filter_by(email=body["email"].lower()).first():
-        return _err("Email already registered.", 409)
-
-    user = User(email=body["email"].lower(), role="company")
-    user.set_password(body["password"])
-    db.session.add(user)
-    db.session.flush()
-
-    profile = CompanyProfile(
-        user_id      = user.id,
-        company_name = body["company_name"],
-        hr_name      = body.get("hr_name", ""),
-        hr_contact   = body.get("hr_contact", ""),
-        website      = body.get("website", ""),
-        description  = body.get("description", ""),
-        industry     = body.get("industry", ""),
-        headquarters = body.get("headquarters", ""),
-    )
-    db.session.add(profile)
-    db.session.commit()
-    return _ok({"message": "Company registered. Awaiting admin approval."}, 201)
-
-
-# ── login ────────────────────────────────────────────────────────────────────
-
-@auth_bp.route("/login", methods=["POST"])
+@auth_bp.route('/login', methods=['POST'])
 def login():
-    body = request.get_json(silent=True) or {}
-    email    = body.get("email", "").lower()
-    password = body.get("password", "")
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
 
+    email = data.get('email', '').strip()
+    password = data.get('password', '').strip()
+
+    
     if not email or not password:
-        return _err("Email and password are required.")
-
+        return jsonify({'error': 'Email and password are required'}), 400
+    if not valid_email(email):
+        return jsonify({'error': 'Invalid email format'}), 400
+    
     user = User.query.filter_by(email=email).first()
-    if not user or not user.check_password(password):
-        return _err("Invalid credentials.", 401)
-
+    if not user or not check_password_hash(user.password, password):
+        return jsonify({'error': 'Invalid email or password'}), 401
     if user.is_blacklisted:
-        return _err("Your account has been blacklisted. Contact the admin.", 403)
-
+        return jsonify({'error': 'Account blacklisted. Contact admin.'}), 403
     if not user.is_active:
-        return _err("Your account is inactive. Contact the admin.", 403)
+        return jsonify({'error': 'Account inactive. Contact admin.'}), 403
+    if user.role == 'company':
+        comp = Company.query.filter_by(user_id=user.id).first()
+        if comp and comp.approval_status != 'approved':
+            return jsonify({'error': 'Company pending admin approval.'}), 403
 
-    if user.role == "company":
-        cp = user.company_profile
-        if cp and cp.approval_status == "pending":
-            return _err("Company registration is awaiting admin approval.", 403)
-        if cp and cp.approval_status == "rejected":
-            return _err("Company registration was rejected by the admin.", 403)
+    token = create_access_token(identity=str(user.id))
+    profile = None
+    if user.role == 'student':
+        s = Student.query.filter_by(user_id=user.id).first()
+        profile = s.to_dict() if s else None
+    elif user.role == 'company':
+        c = Company.query.filter_by(user_id=user.id).first()
+        profile = c.to_dict() if c else None
 
-    access_token  = create_access_token(identity=str(user.id), additional_claims={"role": user.role})
-    refresh_token = create_refresh_token(identity=str(user.id))
-
-    profile_data = {}
-    if user.role == "student" and user.student_profile:
-        profile_data = {"full_name": user.student_profile.full_name}
-    elif user.role == "company" and user.company_profile:
-        profile_data = {"company_name": user.company_profile.company_name}
-    elif user.role == "admin":
-        profile_data = {"full_name": "Administrator"}
-
-    return _ok({
-        "access_token":  access_token,
-        "refresh_token": refresh_token,
-        "user": {**user.to_dict(), **profile_data},
-    })
+    return jsonify({'token': token, 'user': user.to_dict(), 'profile': profile}), 200
 
 
-# ── refresh token ────────────────────────────────────────────────────────────
+@auth_bp.route('/register/student', methods=['POST'])
+def register_student():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
 
-@auth_bp.route("/refresh", methods=["POST"])
-@jwt_required(refresh=True)
-def refresh():
-    uid   = get_jwt_identity()
-    user  = User.query.get_or_404(int(uid))
-    token = create_access_token(identity=str(user.id), additional_claims={"role": user.role})
-    return _ok({"access_token": token})
+    required = ['email', 'password', 'name', 'roll_number', 'branch']
+    for field in required:
+        if not data.get(field, '').strip():
+            return jsonify({'error': f'{field} is required'}), 400
+
+    if not valid_email(data['email'].strip()):
+        return jsonify({'error': 'Invalid email format'}), 400
+    if len(data['password']) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+
+    cgpa = float(data.get('cgpa', 0))
+    if cgpa < 0 or cgpa > 10:
+        return jsonify({'error': 'CGPA must be between 0 and 10'}), 400
+
+    year = int(data.get('year', 1))
+    if year < 1 or year > 4:
+        return jsonify({'error': 'Year must be between 1 and 4'}), 400
+
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'error': 'Email already registered'}), 409
+    if Student.query.filter_by(roll_number=data['roll_number']).first():
+        return jsonify({'error': 'Roll number already registered'}), 409
+
+    user = User(email=data['email'].strip(),
+                password=generate_password_hash(data['password']),
+                role='student')
+    db.session.add(user)
+    db.session.flush()
+    student = Student(
+        user_id=user.id, name=data['name'].strip(),
+        roll_number=data['roll_number'].strip(), branch=data['branch'].strip(),
+        cgpa=cgpa, year=year, phone=data.get('phone', '')
+    )
+    db.session.add(student)
+    db.session.commit()
+    return jsonify({'message': 'Registration successful. You can now log in.'}), 201
 
 
-# ── me ───────────────────────────────────────────────────────────────────────
+@auth_bp.route('/register/company', methods=['POST'])
+def register_company():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
 
-@auth_bp.route("/me", methods=["GET"])
+    for field in ['email', 'password', 'company_name']:
+        if not data.get(field, '').strip():
+            return jsonify({'error': f'{field} is required'}), 400
+
+    if not valid_email(data['email'].strip()):
+        return jsonify({'error': 'Invalid email format'}), 400
+    if len(data['password']) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'error': 'Email already registered'}), 409
+
+    user = User(email=data['email'].strip(),
+                password=generate_password_hash(data['password']),
+                role='company')
+    db.session.add(user)
+    db.session.flush()
+    company = Company(
+        user_id=user.id, company_name=data['company_name'].strip(),
+        hr_contact=data.get('hr_contact', ''), website=data.get('website', ''),
+        description=data.get('description', '')
+    )
+    db.session.add(company)
+    db.session.commit()
+    return jsonify({'message': 'Company registered. Awaiting admin approval.'}), 201
+
+
+@auth_bp.route('/me', methods=['GET'])
 @jwt_required()
 def me():
-    uid  = get_jwt_identity()
-    user = User.query.get_or_404(int(uid))
-    data = user.to_dict()
-    if user.role == "student" and user.student_profile:
-        data["profile"] = user.student_profile.to_dict()
-    elif user.role == "company" and user.company_profile:
-        data["profile"] = user.company_profile.to_dict()
-    return _ok(data)
-
-
-def _cached_admin_stats():
-    pass  # placeholder for cache invalidation key
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    profile = None
+    if user.role == 'student':
+        s = Student.query.filter_by(user_id=user.id).first()
+        profile = s.to_dict() if s else None
+    elif user.role == 'company':
+        c = Company.query.filter_by(user_id=user.id).first()
+        profile = c.to_dict() if c else None
+    return jsonify({'user': user.to_dict(), 'profile': profile}), 200
+    

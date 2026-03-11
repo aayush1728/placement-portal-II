@@ -1,260 +1,159 @@
-"""
-Background jobs powered by Celery + Redis.
-  1. export_applications_csv  – user-triggered async CSV export
-  2. send_deadline_reminders  – daily scheduled job
-  3. send_monthly_report      – monthly scheduled job (1st of each month)
-"""
-import csv
-import io
-import os
+from tasks.celery_app import celery
+import csv, io, os
 from datetime import datetime, timedelta
-from celery import Celery
-from celery.schedules import crontab
+
+def get_app():
+    """Lazy import to avoid circular deps."""
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from app import create_app
+    return create_app()
 
 
-def make_celery(app):
-    celery = Celery(app.import_name)
-    celery.conf.update(
-        broker_url=app.config['CELERY_BROKER_URL'],
-        result_backend=app.config['CELERY_RESULT_BACKEND'],
-        task_serializer='json',
-        result_serializer='json',
-        accept_content=['json'],
-        timezone='Asia/Kolkata',
-        beat_schedule={
-            'daily-deadline-reminders': {
-                'task': 'tasks.jobs.send_deadline_reminders',
-                'schedule': crontab(hour=8, minute=0),  # 8 AM daily
-            },
-            'monthly-activity-report': {
-                'task': 'tasks.jobs.send_monthly_report',
-                'schedule': crontab(hour=7, minute=0, day_of_month=1),  # 1st of each month
-            },
-        },
-    )
-    celery.conf.update(app.config)
-
-    class ContextTask(celery.Task):
-        def __call__(self, *args, **kwargs):
-            with app.app_context():
-                return self.run(*args, **kwargs)
-
-    celery.Task = ContextTask
-    return celery
-
-
-# This module-level celery instance is replaced when the app is created.
-celery_app = None
-
-
-# ──────────────────────── Task: CSV Export ────────────────────────
-
-def export_applications_csv(student_id, student_email):
-    """Async task: generate a CSV of the student's application history and email it."""
-    from extensions import mail, db
-    from models import StudentProfile, Application
-    from flask_mail import Message
-
-    student = StudentProfile.query.get(student_id)
-    if not student:
-        return {'error': 'Student not found'}
-
-    apps = student.applications.order_by(Application.applied_at.desc()).all()
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow([
-        'Application ID', 'Student ID', 'Company Name',
-        'Drive Title', 'Job Type', 'Location', 'Package (LPA)',
-        'Application Status', 'Applied Date', 'Last Updated'
-    ])
-
-    for app in apps:
-        writer.writerow([
-            app.id,
-            student_id,
-            app.drive.company.company_name,
-            app.drive.job_title,
-            app.drive.job_type,
-            app.drive.location or 'N/A',
-            app.drive.package_lpa or 'N/A',
-            app.status,
-            app.applied_at.strftime('%Y-%m-%d %H:%M'),
-            app.updated_at.strftime('%Y-%m-%d %H:%M'),
-        ])
-
-    csv_content = output.getvalue()
-    output.close()
-
-    # Email the CSV
-    try:
-        msg = Message(
-            subject='Placement Portal – Your Application History Export',
-            recipients=[student_email],
-            body=(
-                f'Dear {student.full_name},\n\n'
-                'Please find your placement application history attached as a CSV file.\n\n'
-                'Best regards,\nPlacement Portal Team'
-            ),
-        )
-        msg.attach(
-            filename='placement_history.csv',
-            content_type='text/csv',
-            data=csv_content,
-        )
-        mail.send(msg)
-        return {'status': 'success', 'records': len(apps), 'email': student_email}
-    except Exception as exc:
-        # Even if mail fails, return the CSV content so the task shows success data
-        return {'status': 'email_failed', 'error': str(exc), 'records': len(apps)}
-
-
-# ──────────────────────── Task: Daily Deadline Reminders ────────────────────────
-
+@celery.task(name='tasks.jobs.send_deadline_reminders')
 def send_deadline_reminders():
-    """Daily job: email students about drives whose deadline is within 3 days."""
-    from extensions import mail, db
-    from models import PlacementDrive, StudentProfile, Application
-    from flask_mail import Message
+    """Send email reminders to students about drives closing in the next 3 days."""
+    flask_app = get_app()
+    with flask_app.app_context():
+        from models import PlacementDrive, Application, Student, User
+        from flask_mail import Mail, Message
+        mail = Mail(flask_app)
 
-    cutoff = datetime.utcnow() + timedelta(days=3)
-    upcoming_drives = PlacementDrive.query.filter(
-        PlacementDrive.status == 'approved',
-        PlacementDrive.application_deadline <= cutoff,
-        PlacementDrive.application_deadline >= datetime.utcnow(),
-    ).all()
+        today = datetime.utcnow().date()
+        cutoff = today + timedelta(days=3)
 
-    if not upcoming_drives:
-        return {'reminded': 0}
+        upcoming = PlacementDrive.query.filter(
+            PlacementDrive.status == 'approved',
+            PlacementDrive.application_deadline <= str(cutoff),
+            PlacementDrive.application_deadline >= str(today)
+        ).all()
 
-    students = StudentProfile.query.join(StudentProfile.user).filter_by(
-        is_active=True, is_blacklisted=False
-    ).all()
+        if not upcoming:
+            return 'No upcoming deadlines.'
 
-    reminded = 0
-    for student in students:
-        applied_ids = {a.drive_id for a in student.applications.all()}
-        relevant = []
-        for drive in upcoming_drives:
-            if drive.id in applied_ids:
+        students = Student.query.join(User).filter(User.is_active == True, User.is_blacklisted == False).all()
+        count = 0
+        for student in students:
+            applied_ids = {a.drive_id for a in student.applications}
+            relevant = [d for d in upcoming if d.id not in applied_ids]
+            if not relevant:
                 continue
-            # Quick eligibility check
-            if drive.eligible_branches:
-                allowed = [b.strip().lower() for b in drive.eligible_branches.split(',')]
-                if student.branch.lower() not in allowed:
-                    continue
-            if drive.min_cgpa and student.cgpa < drive.min_cgpa:
-                continue
-            relevant.append(drive)
+            body_lines = [f"<li><strong>{d.job_title}</strong> at {d.company.company_name} — Deadline: {d.application_deadline}</li>" for d in relevant]
+            html = f"""
+            <h2>Placement Portal — Deadline Reminders</h2>
+            <p>Hi {student.name}, the following drives are closing soon:</p>
+            <ul>{''.join(body_lines)}</ul>
+            <p>Log in now to apply before they close!</p>
+            """
+            try:
+                msg = Message("⏰ Upcoming Placement Drive Deadlines",
+                              recipients=[student.user.email], html=html)
+                mail.send(msg)
+                count += 1
+            except Exception as e:
+                print(f"Failed to email {student.user.email}: {e}")
+        return f'Reminders sent to {count} students.'
 
-        if not relevant:
-            continue
 
-        lines = [f'  • {d.job_title} at {d.company.company_name} — deadline {d.application_deadline.strftime("%d %b %Y")}'
-                 for d in relevant]
-        body = (
-            f'Dear {student.full_name},\n\n'
-            'The following placement drives are closing soon. Don\'t miss out!\n\n'
-            + '\n'.join(lines)
-            + '\n\nLog in to the Placement Portal to apply.\n\nBest,\nPlacement Cell'
-        )
+@celery.task(name='tasks.jobs.send_monthly_report')
+def send_monthly_report():
+    """Generate and email monthly placement report to admin."""
+    flask_app = get_app()
+    with flask_app.app_context():
+        from models import PlacementDrive, Application, Student, Company, User
+        from flask_mail import Mail, Message
+        mail = Mail(flask_app)
+
+        now = datetime.utcnow()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0)
+
+        drives_count = PlacementDrive.query.filter(PlacementDrive.created_at >= month_start).count()
+        apps = Application.query.filter(Application.application_date >= month_start).all()
+        selected_count = sum(1 for a in apps if a.status == 'selected')
+        new_students = Student.query.join(User).filter(User.created_at >= month_start).count()
+        new_companies = Company.query.join(User).filter(User.created_at >= month_start).count()
+
+        html = f"""
+        <!DOCTYPE html><html><head><style>
+        body {{ font-family: Arial, sans-serif; background: #f5f5f5; }}
+        .card {{ background: white; border-radius: 8px; padding: 20px; margin: 10px; display: inline-block; min-width: 150px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.1); }}
+        .num {{ font-size: 2rem; font-weight: bold; color: #0d6efd; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+        th {{ background: #0d6efd; color: white; padding: 10px; }}
+        td {{ padding: 8px; border: 1px solid #dee2e6; }}
+        </style></head><body>
+        <div style="max-width:700px;margin:auto;padding:30px;">
+          <h1 style="color:#1a1a2e;">📊 Monthly Placement Report</h1>
+          <p style="color:#6c757d;">{now.strftime('%B %Y')} — Generated on {now.strftime('%d %b %Y')}</p>
+          <div>
+            <div class="card"><div class="num">{drives_count}</div><div>Drives Created</div></div>
+            <div class="card"><div class="num">{len(apps)}</div><div>Applications</div></div>
+            <div class="card"><div class="num">{selected_count}</div><div>Students Selected</div></div>
+            <div class="card"><div class="num">{new_students}</div><div>New Students</div></div>
+            <div class="card"><div class="num">{new_companies}</div><div>New Companies</div></div>
+          </div>
+          <h3 style="margin-top:30px;">Application Status Breakdown</h3>
+          <table>
+            <tr><th>Status</th><th>Count</th></tr>
+            {"".join(f"<tr><td>{s.title()}</td><td>{sum(1 for a in apps if a.status == s)}</td></tr>" for s in ['applied','shortlisted','selected','rejected'])}
+          </table>
+        </div></body></html>
+        """
+
+        admin = User.query.filter_by(role='admin').first()
+        if admin:
+            try:
+                msg = Message(f"📊 Monthly Placement Report — {now.strftime('%B %Y')}",
+                              recipients=[admin.email], html=html)
+                mail.send(msg)
+                return f'Monthly report sent to {admin.email}'
+            except Exception as e:
+                return f'Failed: {e}'
+        return 'No admin found.'
+
+
+
+@celery.task(name='tasks.jobs.export_csv_task', bind=True)
+def export_csv_task(self, student_id):
+    """Export student's application history as CSV and email it."""
+    flask_app = get_app()
+    with flask_app.app_context():
+        from models import Application, Student
+        from flask_mail import Mail, Message
+        mail = Mail(flask_app)
+
+        student = Student.query.get(student_id)
+        if not student:
+            return {'error': 'Student not found'}
+
+        apps = Application.query.filter_by(student_id=student_id).all()
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Application ID', 'Student ID', 'Student Name', 'Roll Number',
+                         'Company Name', 'Drive Title', 'Package (LPA)', 'Application Status',
+                         'Application Date'])
+        for a in apps:
+            writer.writerow([
+                a.id, student.id, student.name, student.roll_number,
+                a.drive.company.company_name if a.drive and a.drive.company else 'N/A',
+                a.drive.job_title if a.drive else 'N/A',
+                a.drive.package_lpa if a.drive else 'N/A',
+                a.status,
+                a.application_date.strftime('%Y-%m-%d')
+            ])
+
+        csv_content = output.getvalue()
+        filename = f'applications_{student.roll_number}_{datetime.utcnow().strftime("%Y%m%d")}.csv'
+
         try:
             msg = Message(
-                subject='[Placement Portal] Upcoming Drive Deadlines – Act Now!',
+                subject='✅ Your Application History Export is Ready',
                 recipients=[student.user.email],
-                body=body,
+                body=f'Hi {student.name},\n\nYour application history CSV is attached.\n\nPlacement Portal'
             )
+            msg.attach(filename, 'text/csv', csv_content)
             mail.send(msg)
-            reminded += 1
-        except Exception:
-            pass
-
-    return {'reminded': reminded, 'drives_checked': len(upcoming_drives)}
-
-
-# ──────────────────────── Task: Monthly Report ────────────────────────
-
-def send_monthly_report():
-    """First of every month: generate and email an HTML report to admin."""
-    from extensions import mail, db
-    from models import PlacementDrive, Application, User
-    from flask_mail import Message
-
-    now = datetime.utcnow()
-    prev_month = (now.replace(day=1) - timedelta(days=1))
-    month_str = prev_month.strftime('%Y-%m')
-    month_label = prev_month.strftime('%B %Y')
-
-    drives = PlacementDrive.query.filter(
-        db.func.strftime('%Y-%m', PlacementDrive.created_at) == month_str
-    ).all()
-    apps = Application.query.filter(
-        db.func.strftime('%Y-%m', Application.applied_at) == month_str
-    ).all()
-    selected = [a for a in apps if a.status == 'selected']
-
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset='utf-8'>
-    <style>
-      body {{ font-family: Arial, sans-serif; color: #333; }}
-      h1 {{ color: #1a237e; }} h2 {{ color: #283593; border-bottom: 1px solid #ccc; }}
-      .stat-box {{ display:inline-block; background:#e8eaf6; padding:16px 24px;
-                  border-radius:8px; margin:8px; text-align:center; }}
-      .stat-box .num {{ font-size:2em; font-weight:bold; color:#1a237e; }}
-      table {{ border-collapse:collapse; width:100%; }}
-      th {{ background:#3949ab; color:#fff; padding:8px; }}
-      td {{ padding:8px; border:1px solid #ddd; }}
-      tr:nth-child(even) {{ background:#f5f5f5; }}
-    </style>
-    </head>
-    <body>
-    <h1>📊 Monthly Placement Activity Report</h1>
-    <p><strong>Period:</strong> {month_label}</p>
-    <p><strong>Generated on:</strong> {now.strftime('%d %B %Y %H:%M UTC')}</p>
-
-    <h2>Summary</h2>
-    <div>
-      <div class='stat-box'><div class='num'>{len(drives)}</div><div>Drives Posted</div></div>
-      <div class='stat-box'><div class='num'>{len(apps)}</div><div>Applications</div></div>
-      <div class='stat-box'><div class='num'>{len(selected)}</div><div>Students Selected</div></div>
-    </div>
-
-    <h2>Drives Conducted</h2>
-    {'<p>No drives this month.</p>' if not drives else ''}
-    """
-
-    if drives:
-        html += """
-        <table>
-          <tr><th>#</th><th>Company</th><th>Job Title</th><th>Type</th>
-              <th>Deadline</th><th>Status</th><th>Applicants</th></tr>
-        """
-        for i, d in enumerate(drives, 1):
-            html += (
-                f"<tr><td>{i}</td><td>{d.company.company_name}</td>"
-                f"<td>{d.job_title}</td><td>{d.job_type}</td>"
-                f"<td>{d.application_deadline.strftime('%d %b %Y')}</td>"
-                f"<td>{d.status}</td><td>{d.applications.count()}</td></tr>"
-            )
-        html += "</table>"
-
-    html += "</body></html>"
-
-    admin_user = User.query.filter_by(role='admin').first()
-    if not admin_user:
-        return {'error': 'Admin not found'}
-
-    try:
-        msg = Message(
-            subject=f'[Placement Portal] Monthly Activity Report – {month_label}',
-            recipients=[admin_user.email],
-            html=html,
-            body=f'Monthly placement report for {month_label}. Please view in an HTML-compatible email client.',
-        )
-        mail.send(msg)
-        return {'status': 'sent', 'month': month_label, 'drives': len(drives)}
-    except Exception as exc:
-        return {'status': 'failed', 'error': str(exc)}
+            return {'status': 'done', 'filename': filename, 'records': len(apps)}
+        except Exception as e:
+            return {'status': 'done_no_email', 'error': str(e), 'csv': csv_content}
