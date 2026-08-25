@@ -1,6 +1,5 @@
 # Placement Cell — Placement Portal Application V2
-
-> **App Development II Project — Jan 2026**  
+ 
 > A full-stack campus recruitment management system built with Flask, Vue 3, Redis, and Celery.
 
 ---
